@@ -1,5 +1,5 @@
 // Balance check: plays every level many times with simple bots and prints win rates.
-//   naive   = moves straight to the finish at a fixed speed (should lose)
+//   naive   = moves straight to the finish at a fixed speed (should lose); 300 = an instant fling
 //   skilled = "expert feel": keeps cats below their pounce threshold, steers around them,
 //             dodges wiggling cats and cuts sideways once they jump.
 // Usage: node tools/balance.js   (needs Playwright; N=40 node tools/balance.js for more runs)
@@ -32,7 +32,7 @@ const N = +process.env.N || 24;
       };
       const d = game.dot, dt = 1 / 60; let dodge = null, dodgeT = 0, react = 0.15 + rnd() * 0.15;
       while (game.state === 'play' && game.time < 60) {
-        let vx = game.goal.x - d.x, vy = game.goal.y - d.y; let gd = Math.hypot(vx, vy); vx /= gd; vy /= gd;
+        let vx = game.goal.x - d.x, vy = game.goal.y - d.y; let gd = Math.hypot(vx, vy) || 1e-6; vx /= gd; vy /= gd;
         let speed = spd;
         if (mode === 'skilled') {
           let maxE = 0;
@@ -71,6 +71,9 @@ const N = +process.env.N || 24;
           for (const c of game.cats) if (c.state !== 'leap') c.juked = false;
           if (dodge) { vx = dodge.x; vy = dodge.y; speed = 22; dodgeT -= dt; if (dodgeT <= 0) dodge = null; }
         }
+        // on the flag: hold still
+        if (Math.hypot(game.goal.x - d.x, game.goal.y - d.y) < 0.5 && !dodge) speed = 0;
+        else speed = Math.min(speed, Math.hypot(game.goal.x - d.x, game.goal.y - d.y) / dt);
         const vd = Math.hypot(vx, vy) || 1;
         d.tx = Math.min(17.7, Math.max(0.3, d.x + vx / vd * speed * dt));
         d.ty = Math.min(Wc - 0.3, Math.max(0.3, d.y + vy / vd * speed * dt));
@@ -81,7 +84,7 @@ const N = +process.env.N || 24;
     const out = [];
     for (let li = 0; li < LEVELS.length; li++) {
       const row = { lvl: li + 1, name: LEVELS[li].name };
-      for (const [mode, spd] of [["naive", 3], ["naive", 9.5], ["naive", 22], ["skilled", 3], ["skilled", 5]]) {
+      for (const [mode, spd] of [["naive", 3], ["naive", 12], ["naive", 300], ["skilled", 3], ["skilled", 5]]) {
         let w = 0, to = 0;
         for (let k = 0; k < N; k++) { const o = run(li, mode, spd * (0.85 + 0.3 * (k / N)), 1000 + k * 77); if (o === 'won') w++; if (o === 'timeout') to++; }
         row[mode + spd] = Math.round(100 * w / N) + '%' + (to ? ` (${to}to)` : '');

@@ -9,18 +9,20 @@
 // World units: the board is L units long (start -> finish) and as wide as the
 // screen allows. 1 unit ~ a laser-dot's "step".
 const L = 18;
-const DOT_MAX_SPEED = 22;     // units / second: high, so the dot feels glued to your finger
-// Burst reserve: moving faster than CRUISE_SPEED uses up the reserve (in units of
-// extra distance). Short flicks and dodges are instant; only long full-speed sweeps
-// get held back to CRUISE_SPEED, so you can't just whip the dot past every cat.
-const CRUISE_SPEED = 10;
-const BURST_MAX = 2.5;
-const BURST_REGEN = 2.5;       // units of reserve per second
+// The dot follows the pointer exactly (no speed limit). On touch screens, swipes get
+// pointer acceleration like a mouse: slow = precise, fast = the dot travels further.
+const TOUCH_ACCEL = 1.6;       // extra gain per (px/ms) of finger speed above TOUCH_ACCEL_FROM
+const TOUCH_ACCEL_FROM = 0.25; // px/ms
+const TOUCH_GAIN_MAX = 3;
+// To finish, the dot must rest calmly on the flag for a moment.
+const FINISH_HOLD = 0.8;       // seconds
+const FINISH_CALM = 4;         // max dot speed that counts as resting
+// (and it only counts while no cat is chasing / about to pounce / mid-air)
 const DOT_R = 0.17;
 const START_X = 1.6;
 const FINISH_X = L - 1.6;
 const FINISH_R = 0.75;
-const GRACE_TIME = 0.3;        // seconds at level start where cats don't get excited
+const GRACE_TIME = 0;        // seconds at level start where cats don't get excited
 
 // Cat personalities. All distances in world units, times in seconds.
 //  sens        how excitable by motion
@@ -116,7 +118,7 @@ const LEVELS = [
     goalY: 0.25, boost: 0.85, cats: [{ type: 'kitten', x: 6, y: 0.3 }, { type: 'kitten', x: 6.5, y: 0.75 }, { type: 'black', x: 12.5, y: 0.5 }] },
   { name: 'Crazy Cat House', intro: 'Seven cats. Two are asleep. Good luck.',
     goalY: 0.5, boost: 0.85, cats: [{ type: 'kitten', x: 5.5, y: 0.2 }, { type: 'big', x: 6.5, y: 0.75, sleep: true }, { type: 'normal', x: 8.5, y: 0.45 },
-      { type: 'chonk', x: 11, y: 0.15, sleep: true }, { type: 'black', x: 11.5, y: 0.8 }, { type: 'tuxedo', x: 14, y: 0.35 }, { type: 'siamese', x: 15.5, y: 0.75 }] },
+      { type: 'chonk', x: 11, y: 0.15, sleep: true }, { type: 'black', x: 11.5, y: 0.8 }, { type: 'tuxedo', x: 14, y: 0.35 }, { type: 'siamese', x: 14.5, y: 0.8 }] },
 ];
 
 // Difficulty ramp: later levels have more excitable cats.
@@ -128,6 +130,12 @@ LEVELS.forEach((lv, i) => { if (lv.boost === undefined) lv.boost = 0.85 + 0.15 *
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+// distance from point (x,y) to segment (ax,ay)-(bx,by)
+const segDist = (x, y, ax, ay, bx, by) => {
+  const vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy;
+  const t = l2 > 0 ? clamp(((x - ax) * vx + (y - ay) * vy) / l2, 0, 1) : 0;
+  return Math.hypot(x - ax - vx * t, y - ay - vy * t);
+};
 const turnTo = (a, target, maxStep) => a + clamp(angDiff(a, target), -maxStep, maxStep);
 
 const store = {
@@ -239,7 +247,8 @@ function loadLevel(i) {
   game.level = LEVELS[i];
   const Wc = view.Wc;
   game.cats = game.level.cats.map(c => makeCat(c, Wc));
-  game.dot = { x: START_X, y: Wc / 2, tx: START_X, ty: Wc / 2, vx: 0, vy: 0, speed: 0, burst: BURST_MAX };
+  game.dot = { x: START_X, y: Wc / 2, tx: START_X, ty: Wc / 2, px: START_X, py: Wc / 2, vx: 0, vy: 0, speed: 0 };
+  game.hold = 0;
   game.goal = { x: FINISH_X, y: clamp(game.level.goalY * Wc, 1.2, Wc - 1.2) };
   game.time = 0; game.playTime = 0; game.fx = [];
   game.state = 'ready';
@@ -277,7 +286,7 @@ canvas.addEventListener('pointerdown', e => {
   }
   if (game.state === 'play') {
     pointer.active = e.pointerId;
-    pointer.lastX = e.clientX; pointer.lastY = e.clientY;
+    pointer.lastX = e.clientX; pointer.lastY = e.clientY; pointer.lastT = e.timeStamp;
     try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
   }
   e.preventDefault();
@@ -287,18 +296,20 @@ canvas.addEventListener('pointermove', e => {
   if (game.state !== 'play') return;
   const d = game.dot;
   if (e.pointerType === 'mouse') {
-    // Mouse: the dot chases the cursor (speed-limited).
+    // Mouse: the dot is exactly where the cursor is.
     const w = toWorld(e.clientX, e.clientY);
     d.tx = w.x; d.ty = w.y;
   } else if (pointer.active === e.pointerId) {
     // Touch / pen: swipe anywhere, the dot moves with your finger (relative),
     // so your finger never hides the dot.
-    const dw = deltaToWorld(e.clientX - pointer.lastX, e.clientY - pointer.lastY);
-    pointer.lastX = e.clientX; pointer.lastY = e.clientY;
+    const mx = e.clientX - pointer.lastX, my = e.clientY - pointer.lastY;
+    const ms = Math.max(1, e.timeStamp - (pointer.lastT || e.timeStamp - 16));
+    pointer.lastX = e.clientX; pointer.lastY = e.clientY; pointer.lastT = e.timeStamp;
+    // pointer acceleration: fast swipes throw the dot further
+    const fingerSpeed = Math.hypot(mx, my) / ms;
+    const gain = Math.min(TOUCH_GAIN_MAX, 1 + Math.max(0, fingerSpeed - TOUCH_ACCEL_FROM) * TOUCH_ACCEL);
+    const dw = deltaToWorld(mx * gain, my * gain);
     d.tx += dw.x; d.ty += dw.y;
-    // Don't let the target run far ahead of the dot.
-    const ox = d.tx - d.x, oy = d.ty - d.y, od = Math.hypot(ox, oy);
-    if (od > 3) { d.tx = d.x + ox / od * 3; d.ty = d.y + oy / od * 3; }
   }
   d.tx = clamp(d.tx, 0.3, L - 0.3);
   d.ty = clamp(d.ty, 0.3, view.Wc - 0.3);
@@ -343,10 +354,11 @@ function showMenu() {
   }).join('');
   showPanel(`
     <h1>LAZER CAT</h1>
-    <p class="sub">Get the laser dot to the finish flag without a cat catching it.</p>
+    <p class="sub">Get the laser dot to the finish flag and hold it there a moment, without a cat catching it.</p>
     <ul>
       <li><b>Mouse:</b> click the red dot to pick it up, then move the mouse.</li>
-      <li><b>Touch:</b> swipe anywhere — the dot follows your finger's movement.</li>
+      <li><b>Touch:</b> swipe anywhere — the dot follows your finger's movement. Fast swipes throw it further.</li>
+      <li>Reach the flag and <b>hold the dot there</b> until the green ring fills. It pauses (orange) while a cat is hunting you.</li>
       <li>Still dot → cats just stare. Slow moves → they crouch and stalk. Fast moves → <b>POUNCE</b>.</li>
       <li>When a cat wiggles its bum, it's about to jump. Move the dot away — and once it's in the air, cut sideways!</li>
       <li>Cats predict where you're going, try to block your path, and won't wait forever if you sit still next to them.</li>
@@ -428,20 +440,16 @@ refreshSoundBtn();
 // ---------------------------------------------------------------------------
 function updateDot(dt) {
   const d = game.dot;
-  const dx = d.tx - d.x, dy = d.ty - d.y, dist = Math.hypot(dx, dy);
-  const cap = d.burst > 0 ? DOT_MAX_SPEED : CRUISE_SPEED;
-  const step = Math.min(dist, cap * dt);
-  const excess = step - CRUISE_SPEED * dt;
-  if (excess > 1e-9) d.burst = Math.max(0, d.burst - excess);
-  else if (step < CRUISE_SPEED * 0.8 * dt) d.burst = Math.min(BURST_MAX, d.burst + BURST_REGEN * dt);
+  // The dot is exactly where the pointer says (no lag, no speed limit).
   const px = d.x, py = d.y;
-  if (dist > 1e-6) { d.x += dx / dist * step; d.y += dy / dist * step; }
+  d.px = px; d.py = py;
+  d.x = d.tx; d.y = d.ty;
   const ivx = (d.x - px) / dt, ivy = (d.y - py) / dt;
   // Smooth velocity so jittery input doesn't spike the cats.
   const k = 1 - Math.exp(-dt * 12);
   d.vx = lerp(d.vx, ivx, k); d.vy = lerp(d.vy, ivy, k);
   // Speed is smoothed separately so back-and-forth jiggling still counts.
-  d.speed = lerp(d.speed, Math.hypot(ivx, ivy), k);
+  d.speed = lerp(d.speed, Math.min(40, Math.hypot(ivx, ivy)), k);
   // Sudden start after resting: cats react to that instantly.
   d.startle = false;
   if (d.speed < 0.4) d.still = (d.still || 0) + dt;
@@ -503,7 +511,7 @@ function updateCat(c, dt) {
 
   // Paw swipe: a dot zipping right under an alert cat's nose gets swatted.
   if ((c.state === 'stalk' || c.state === 'chase' || c.state === 'windup' || (c.state === 'watch' && c.E > 0.15))
-      && game.time > GRACE_TIME && dist < 0.55 * T.size + DOT_R) {
+      && game.time > GRACE_TIME && segDist(c.x, c.y, d.px, d.py, d.x, d.y) < 0.55 * T.size + DOT_R) {
     c.a = toDot; catchDot(c); return;
   }
 
@@ -626,8 +634,10 @@ function startWindup(c, time) {
 
 function startLeap(c) {
   const T = c.T, d = game.dot;
-  let tx = d.x + d.vx * T.leapTime * T.lead;
-  let ty = d.y + d.vy * T.leapTime * T.lead;
+  // predict where the dot is heading (a wild fling doesn't fool it into overshooting)
+  const vm = Math.hypot(d.vx, d.vy), vs = vm > 14 ? 14 / vm : 1;
+  let tx = d.x + d.vx * vs * T.leapTime * T.lead;
+  let ty = d.y + d.vy * vs * T.leapTime * T.lead;
   const ox = tx - c.x, oy = ty - c.y, od = Math.hypot(ox, oy);
   if (od > T.leapRange) { tx = c.x + ox / od * T.leapRange; ty = c.y + oy / od * T.leapRange; }
   c.leap = { x0: c.x, y0: c.y, tx, ty, p: 0 };
@@ -667,7 +677,16 @@ function update(dt) {
     updateDot(dt);
     for (const c of game.cats) { updateCat(c, dt); if (game.state !== 'play') break; }
     separateCats();
-    if (game.state === 'play' && Math.hypot(game.dot.x - game.goal.x, game.dot.y - game.goal.y) < FINISH_R) winLevel();
+    if (game.state === 'play') {
+      const inside = Math.hypot(game.dot.x - game.goal.x, game.dot.y - game.goal.y) < FINISH_R;
+      // The hold only counts while the dot rests and no cat is actively hunting it.
+      const hunting = game.cats.some(c => (c.state === 'chase' || c.state === 'windup' || c.state === 'leap')
+        && Math.hypot(c.x - game.dot.x, c.y - game.dot.y) < 8);
+      game.holdPaused = inside && hunting;
+      if (inside && game.dot.speed < FINISH_CALM && !hunting) game.hold += dt;
+      else game.hold = inside ? Math.max(0, game.hold - dt) : 0;
+      if (game.hold >= FINISH_HOLD) winLevel();
+    }
   } else if (game.state === 'ready' || game.state === 'won' || game.state === 'lost') {
     // keep the cats alive-looking
     for (const c of game.cats) {
@@ -747,6 +766,11 @@ function drawStartAndGoal() {
   ctx.translate(g.x, g.y);
   ctx.lineWidth = 0.08; ctx.strokeStyle = '#ffd34d';
   ctx.beginPath(); ctx.arc(0, 0, r + 0.04 + Math.sin(t * 4) * 0.04, 0, Math.PI * 2); ctx.stroke();
+  if (game.hold > 0) {
+    // "hold it here" progress ring
+    ctx.lineWidth = 0.16; ctx.strokeStyle = game.holdPaused ? '#ff9f43' : '#4cd964'; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(0, 0, r + 0.22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, game.hold / FINISH_HOLD)); ctx.stroke();
+  }
   ctx.restore();
 }
 

@@ -1,7 +1,8 @@
 # Lazer Cat 🔴🐈
 
 A browser game: you control a laser pointer dot and must guide it from the start
-circle to the checkered finish without a cat pouncing on it.
+circle to the checkered finish — and hold it there for a moment — without a cat pouncing on it.
+The hold ring (green) only fills while no cat nearby is chasing or about to pounce (orange).
 
 The cats behave a bit like real cats:
 
@@ -23,9 +24,9 @@ dodge when a cat wiggles — and once it's airborne, cut sideways.
 
 ## Controls
 
-- **Mouse (PC):** click the red dot to pick it up, then move the mouse.
+- **Mouse (PC):** click the red dot to pick it up, then move the mouse — the dot sits exactly under it.
 - **Touch (tablet/phone):** touch anywhere and swipe. The dot moves *with* your
-  finger, so your finger never covers it.
+  finger, so your finger never covers it. Fast swipes throw it further, like mouse acceleration.
 - `Esc` / `P` pauses, `R` restarts the level.
 
 In portrait mode the board turns vertical (start at the bottom, finish at the top).
@@ -57,10 +58,9 @@ There is no build step and there are no dependencies. Any of these works:
 
 All tuning is at the top of `game.js`:
 
-- `DOT_MAX_SPEED`, `CRUISE_SPEED`, `BURST_MAX` — how the laser follows your input. The dot
-  is glued to your finger/mouse at normal speeds and for quick flicks; only long full-speed
-  sweeps use up the burst reserve and get held to cruise speed (so you can't whip it past every cat).
-
+- `TOUCH_ACCEL`, `TOUCH_GAIN_MAX` — touch "sensitivity": the dot follows your mouse exactly,
+  and on touch screens fast swipes throw it further (pointer acceleration), slow ones stay precise.
+- `FINISH_HOLD` — how long the dot must rest on the flag to finish.
 - `CAT_TYPES` — each cat's personality: excitability, jump range, warning
   (windup) time, mid-air steering, recovery time, and so on.
 - `LEVELS` — which cats appear where (and whether asleep), the finish position,
