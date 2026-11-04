@@ -57,6 +57,10 @@ There is no build step and there are no dependencies. Any of these works:
 
 All tuning is at the top of `game.js`:
 
+- `DOT_MAX_SPEED`, `CRUISE_SPEED`, `BURST_MAX` — how the laser follows your input. The dot
+  is glued to your finger/mouse at normal speeds and for quick flicks; only long full-speed
+  sweeps use up the burst reserve and get held to cruise speed (so you can't whip it past every cat).
+
 - `CAT_TYPES` — each cat's personality: excitability, jump range, warning
   (windup) time, mid-air steering, recovery time, and so on.
 - `LEVELS` — which cats appear where (and whether asleep), the finish position,

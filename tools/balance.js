@@ -69,7 +69,7 @@ const N = +process.env.N || 24;
             dodge = bestDir([[px, py], [-px, -py]], c); dodgeT = c.T.leapTime + 0.2;
           }
           for (const c of game.cats) if (c.state !== 'leap') c.juked = false;
-          if (dodge) { vx = dodge.x; vy = dodge.y; speed = 9; dodgeT -= dt; if (dodgeT <= 0) dodge = null; }
+          if (dodge) { vx = dodge.x; vy = dodge.y; speed = 22; dodgeT -= dt; if (dodgeT <= 0) dodge = null; }
         }
         const vd = Math.hypot(vx, vy) || 1;
         d.tx = Math.min(17.7, Math.max(0.3, d.x + vx / vd * speed * dt));
@@ -81,7 +81,7 @@ const N = +process.env.N || 24;
     const out = [];
     for (let li = 0; li < LEVELS.length; li++) {
       const row = { lvl: li + 1, name: LEVELS[li].name };
-      for (const [mode, spd] of [["naive", 2], ["naive", 8.5], ["skilled", 3], ["skilled", 5], ["skilled", 7]]) {
+      for (const [mode, spd] of [["naive", 3], ["naive", 9.5], ["naive", 22], ["skilled", 3], ["skilled", 5]]) {
         let w = 0, to = 0;
         for (let k = 0; k < N; k++) { const o = run(li, mode, spd * (0.85 + 0.3 * (k / N)), 1000 + k * 77); if (o === 'won') w++; if (o === 'timeout') to++; }
         row[mode + spd] = Math.round(100 * w / N) + '%' + (to ? ` (${to}to)` : '');

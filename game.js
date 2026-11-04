@@ -9,7 +9,13 @@
 // World units: the board is L units long (start -> finish) and as wide as the
 // screen allows. 1 unit ~ a laser-dot's "step".
 const L = 18;
-const DOT_MAX_SPEED = 9;      // units / second
+const DOT_MAX_SPEED = 22;     // units / second: high, so the dot feels glued to your finger
+// Burst reserve: moving faster than CRUISE_SPEED uses up the reserve (in units of
+// extra distance). Short flicks and dodges are instant; only long full-speed sweeps
+// get held back to CRUISE_SPEED, so you can't just whip the dot past every cat.
+const CRUISE_SPEED = 10;
+const BURST_MAX = 2.5;
+const BURST_REGEN = 2.5;       // units of reserve per second
 const DOT_R = 0.17;
 const START_X = 1.6;
 const FINISH_X = L - 1.6;
@@ -233,7 +239,7 @@ function loadLevel(i) {
   game.level = LEVELS[i];
   const Wc = view.Wc;
   game.cats = game.level.cats.map(c => makeCat(c, Wc));
-  game.dot = { x: START_X, y: Wc / 2, tx: START_X, ty: Wc / 2, vx: 0, vy: 0, speed: 0 };
+  game.dot = { x: START_X, y: Wc / 2, tx: START_X, ty: Wc / 2, vx: 0, vy: 0, speed: 0, burst: BURST_MAX };
   game.goal = { x: FINISH_X, y: clamp(game.level.goalY * Wc, 1.2, Wc - 1.2) };
   game.time = 0; game.playTime = 0; game.fx = [];
   game.state = 'ready';
@@ -292,7 +298,7 @@ canvas.addEventListener('pointermove', e => {
     d.tx += dw.x; d.ty += dw.y;
     // Don't let the target run far ahead of the dot.
     const ox = d.tx - d.x, oy = d.ty - d.y, od = Math.hypot(ox, oy);
-    if (od > 2.5) { d.tx = d.x + ox / od * 2.5; d.ty = d.y + oy / od * 2.5; }
+    if (od > 3) { d.tx = d.x + ox / od * 3; d.ty = d.y + oy / od * 3; }
   }
   d.tx = clamp(d.tx, 0.3, L - 0.3);
   d.ty = clamp(d.ty, 0.3, view.Wc - 0.3);
@@ -423,7 +429,11 @@ refreshSoundBtn();
 function updateDot(dt) {
   const d = game.dot;
   const dx = d.tx - d.x, dy = d.ty - d.y, dist = Math.hypot(dx, dy);
-  const step = Math.min(dist, DOT_MAX_SPEED * dt);
+  const cap = d.burst > 0 ? DOT_MAX_SPEED : CRUISE_SPEED;
+  const step = Math.min(dist, cap * dt);
+  const excess = step - CRUISE_SPEED * dt;
+  if (excess > 1e-9) d.burst = Math.max(0, d.burst - excess);
+  else if (step < CRUISE_SPEED * 0.8 * dt) d.burst = Math.min(BURST_MAX, d.burst + BURST_REGEN * dt);
   const px = d.x, py = d.y;
   if (dist > 1e-6) { d.x += dx / dist * step; d.y += dy / dist * step; }
   const ivx = (d.x - px) / dt, ivy = (d.y - py) / dt;
@@ -606,8 +616,10 @@ function wakeUp(c) {
 }
 
 function startWindup(c, time) {
-  // Fast-moving prey gets a snap-pounce with hardly any warning.
-  if (game.dot.speed > 6) time *= 0.6;
+  // Fast-moving prey gets a snap-pounce with hardly any warning,
+  // and racing prey a pure reflex pounce with none at all.
+  if (game.dot.speed > 8.5) time = 0.05;
+  else if (game.dot.speed > 6) time *= 0.6;
   c.state = 'windup'; c.timer = time;
   Sound.mrrp();
 }
