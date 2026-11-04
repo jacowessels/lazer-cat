@@ -9,12 +9,12 @@
 // World units: the board is L units long (start -> finish) and as wide as the
 // screen allows. 1 unit ~ a laser-dot's "step".
 const L = 18;
-const DOT_MAX_SPEED = 14;      // units / second
+const DOT_MAX_SPEED = 9;      // units / second
 const DOT_R = 0.17;
 const START_X = 1.6;
 const FINISH_X = L - 1.6;
 const FINISH_R = 0.75;
-const GRACE_TIME = 0.8;        // seconds at level start where cats don't get excited
+const GRACE_TIME = 0.3;        // seconds at level start where cats don't get excited
 
 // Cat personalities. All distances in world units, times in seconds.
 //  sens        how excitable by motion
@@ -25,46 +25,96 @@ const GRACE_TIME = 0.8;        // seconds at level start where cats don't get ex
 //  lead        how much it predicts where the dot is going (0..1)
 //  homing      mid-air steering (units / second)
 //  recover     confused time after a missed pounce
+//  iq          0..1: how much it cuts you off on the way to the finish,
+//              guards the path, and holds back pointless jumps
+//  patience    seconds it will stalk a dot in range before pouncing anyway
+//  reflex      extra excitement when a resting dot suddenly moves
 const CAT_TYPES = {
   big: {
-    name: 'Big Tom', size: 1.55, fur: '#e3913f', stripe: '#b8641f', light: '#f7d6ac', eye: '#9ccc3c',
-    sens: 0.2, rise: 0.8, decay: 0.5, perception: 6, stalkSpeed: 0.45, runSpeed: 2.6,
-    leapRange: 3.2, leapTime: 0.62, windup: 0.95, lead: 0.3, homing: 0.8, recover: 1.9, turn: 2.5, tabby: true,
+    name: 'Big Tom', size: 1.55, fur: '#e3913f', stripe: '#b8641f', light: '#f7d6ac', eye: '#9ccc3c', tabby: true,
+    sens: 0.3, rise: 1.2, decay: 0.45, perception: 5, stalkSpeed: 0.8, runSpeed: 3.2,
+    leapRange: 3.6, leapTime: 0.55, windup: 0.7, lead: 0.85, homing: 1.6, recover: 1.4, turn: 3.5,
+    iq: 0.3, patience: 2.5, reflex: 0.25,
   },
   normal: {
-    name: 'Mittens', size: 1.15, fur: '#8d9095', stripe: '#5d6066', light: '#f2f2f2', eye: '#f2c53d',
-    sens: 0.25, rise: 1.2, decay: 0.45, perception: 7, stalkSpeed: 0.8, runSpeed: 4,
-    leapRange: 3.6, leapTime: 0.5, windup: 0.7, lead: 0.5, homing: 1.5, recover: 1.35, turn: 4, tabby: true,
+    name: 'Mittens', size: 1.15, fur: '#8d9095', stripe: '#5d6066', light: '#f2f2f2', eye: '#f2c53d', tabby: true,
+    sens: 0.38, rise: 1.8, decay: 0.4, perception: 6, stalkSpeed: 1.2, runSpeed: 4.3,
+    leapRange: 4.0, leapTime: 0.45, windup: 0.5, lead: 0.95, homing: 2.4, recover: 1.0, turn: 5,
+    iq: 0.5, patience: 1.8, reflex: 0.35,
   },
   kitten: {
     name: 'Pip', size: 0.8, fur: '#f4e4cf', stripe: '#d8b48a', light: '#ffffff', eye: '#59b6e8',
-    sens: 0.4, rise: 2.5, decay: 0.7, perception: 7, stalkSpeed: 1.2, runSpeed: 6,
-    leapRange: 3.0, leapTime: 0.38, windup: 0.45, lead: 0.55, homing: 2.5, recover: 0.85, turn: 7, tabby: false,
+    sens: 0.55, rise: 3.5, decay: 0.6, perception: 5.5, stalkSpeed: 1.8, runSpeed: 5.8,
+    leapRange: 3.2, leapTime: 0.33, windup: 0.3, lead: 0.8, homing: 3, recover: 0.6, turn: 8,
+    iq: 0.2, patience: 1.0, reflex: 0.6,
   },
   black: {
     name: 'Shadow', size: 1.2, fur: '#26232a', stripe: '#3a3640', light: '#3a3640', eye: '#f2d23d',
-    sens: 0.28, rise: 1.3, decay: 0.35, perception: 9, stalkSpeed: 1.0, runSpeed: 5,
-    leapRange: 4.5, leapTime: 0.5, windup: 0.55, lead: 0.7, homing: 2.0, recover: 1.1, turn: 5, tabby: false,
+    sens: 0.4, rise: 1.8, decay: 0.3, perception: 7.5, stalkSpeed: 1.4, runSpeed: 5,
+    leapRange: 5.0, leapTime: 0.48, windup: 0.42, lead: 1.0, homing: 2.8, recover: 0.9, turn: 6,
+    iq: 0.8, patience: 1.5, reflex: 0.4,
+  },
+  chonk: {
+    name: 'Biscuit', size: 1.95, fur: '#f3ede4', stripe: '#d9822b', light: '#ffffff', eye: '#7cc06a', calico: true,
+    sens: 0.3, rise: 1.0, decay: 0.5, perception: 5, stalkSpeed: 0.6, runSpeed: 2.4,
+    leapRange: 3.4, leapTime: 0.6, windup: 0.6, lead: 0.9, homing: 1.5, recover: 1.6, turn: 3,
+    iq: 0.6, patience: 3, reflex: 0.2,
+  },
+  siamese: {
+    name: 'Professor Miso', size: 1.1, fur: '#efe2cc', stripe: '#5a4030', light: '#f8f0e2', eye: '#4fa3f0', points: true,
+    sens: 0.45, rise: 2.2, decay: 0.35, perception: 7, stalkSpeed: 1.6, runSpeed: 5.2,
+    leapRange: 4.3, leapTime: 0.42, windup: 0.38, lead: 1.05, homing: 3.2, recover: 0.7, turn: 7,
+    iq: 1.0, patience: 1.2, reflex: 0.4,
+  },
+  tuxedo: {
+    name: 'Ninja', size: 1.15, fur: '#1f1f22', stripe: '#1f1f22', light: '#ffffff', eye: '#9be06a',
+    sens: 0.28, rise: 1.6, decay: 0.25, perception: 8, stalkSpeed: 2.0, runSpeed: 4.6,
+    leapRange: 4.6, leapTime: 0.45, windup: 0.33, lead: 1.0, homing: 2.8, recover: 0.8, turn: 6,
+    iq: 0.9, patience: 0.8, reflex: 0.5,
   },
 };
 
 // x = position along the board (0..L), y = 0..1 across the board.
+// sleep: true -> the cat starts asleep and wakes up if the dot gets close or a pounce lands nearby.
 const LEVELS = [
-  { name: 'Big Lazy Tom', intro: 'One big, slow cat. Move slowly and calmly. If he starts wiggling his bum — get away!',
+  { name: 'Big Lazy Tom', intro: 'One big cat. Move calmly. If he wiggles his bum — get away!',
     goalY: 0.5, hints: true, cats: [{ type: 'big', x: 9, y: 0.5 }] },
-  { name: 'Mittens', intro: 'A normal house cat. Quicker to pounce, quicker to recover.',
+  { name: 'Mittens', intro: 'A normal house cat. She will try to get between you and the finish.',
     goalY: 0.3, hints: true, cats: [{ type: 'normal', x: 9, y: 0.45 }] },
-  { name: 'Two\'s Company', intro: 'Two cats. One pounce might set the other one off…',
-    goalY: 0.7, hints: true, cats: [{ type: 'big', x: 6.5, y: 0.3 }, { type: 'normal', x: 12, y: 0.65 }] },
-  { name: 'The Kitten', intro: 'Small, fast and extremely twitchy. But it misses a lot.',
-    goalY: 0.5, hints: false, cats: [{ type: 'kitten', x: 9, y: 0.5 }] },
+  { name: 'Two\'s Company', intro: 'Two cats. One pounce sets the other one off…',
+    goalY: 0.7, hints: true, boost: 0.75, cats: [{ type: 'big', x: 6.5, y: 0.3 }, { type: 'normal', x: 12, y: 0.65 }] },
+  { name: 'The Kitten', intro: 'Small, fast and extremely twitchy. Sudden moves drive it crazy.',
+    goalY: 0.5, cats: [{ type: 'kitten', x: 9, y: 0.5 }] },
   { name: 'Shadow', intro: 'A sharp-eyed black cat with a very long jump.',
-    goalY: 0.8, hints: false, cats: [{ type: 'black', x: 9.5, y: 0.5 }] },
-  { name: 'The Family', intro: 'Mum, dad and the kid. Good luck.',
-    goalY: 0.4, hints: false, cats: [{ type: 'big', x: 5.5, y: 0.7 }, { type: 'kitten', x: 9, y: 0.3 }, { type: 'normal', x: 13, y: 0.6 }] },
+    goalY: 0.8, cats: [{ type: 'black', x: 9.5, y: 0.5 }] },
+  { name: 'Sleepy Head', intro: 'Biscuit is asleep. Don\'t wake her… and watch out for Mittens.',
+    goalY: 0.5, cats: [{ type: 'chonk', x: 8, y: 0.5, sleep: true }, { type: 'normal', x: 13.5, y: 0.25 }] },
+  { name: 'The Professor', intro: 'A clever Siamese. Reads your moves and cuts you off.',
+    goalY: 0.2, cats: [{ type: 'siamese', x: 10, y: 0.6 }] },
+  { name: 'The Family', intro: 'Mum, dad and the kid.',
+    goalY: 0.4, cats: [{ type: 'big', x: 5.5, y: 0.7 }, { type: 'kitten', x: 9, y: 0.3 }, { type: 'normal', x: 13, y: 0.6 }] },
+  { name: 'Ninja', intro: 'Ninja creeps fast and barely warns before striking.',
+    goalY: 0.7, cats: [{ type: 'tuxedo', x: 9, y: 0.35 }] },
+  { name: 'Nap Time', intro: 'Three sleeping cats and one very awake kitten.',
+    goalY: 0.5, boost: 0.8, cats: [{ type: 'normal', x: 6, y: 0.3, sleep: true }, { type: 'big', x: 9.5, y: 0.7, sleep: true },
+      { type: 'black', x: 13, y: 0.35, sleep: true }, { type: 'kitten', x: 11, y: 0.85 }] },
+  { name: 'Guard Duty', intro: 'Biscuit guards the finish. The Professor guards the middle.',
+    goalY: 0.5, cats: [{ type: 'siamese', x: 8, y: 0.4 }, { type: 'chonk', x: 14, y: 0.5 }] },
+  { name: 'The Wall', intro: 'A line of cats across the room. Find the gap.',
+    goalY: 0.5, cats: [{ type: 'normal', x: 9, y: 0.15 }, { type: 'tuxedo', x: 9.5, y: 0.5 }, { type: 'normal', x: 9, y: 0.85 }] },
   { name: 'Cat Café', intro: 'Everyone is here.',
-    goalY: 0.5, hints: false, cats: [{ type: 'normal', x: 5, y: 0.3 }, { type: 'kitten', x: 8, y: 0.75 }, { type: 'black', x: 11, y: 0.35 }, { type: 'big', x: 14, y: 0.7 }] },
+    goalY: 0.5, boost: 0.7, cats: [{ type: 'normal', x: 5.5, y: 0.3 }, { type: 'kitten', x: 8, y: 0.75 }, { type: 'black', x: 11, y: 0.35 }, { type: 'big', x: 14, y: 0.7 }] },
+  { name: 'Night Shift', intro: 'The three smartest cats in town.',
+    goalY: 0.8, cats: [{ type: 'tuxedo', x: 6, y: 0.6 }, { type: 'black', x: 10, y: 0.3 }, { type: 'siamese', x: 13.5, y: 0.65 }] },
+  { name: 'Double Trouble', intro: 'Two kittens and their big sister.',
+    goalY: 0.25, boost: 0.85, cats: [{ type: 'kitten', x: 6, y: 0.3 }, { type: 'kitten', x: 6.5, y: 0.75 }, { type: 'black', x: 12.5, y: 0.5 }] },
+  { name: 'Crazy Cat House', intro: 'Seven cats. Two are asleep. Good luck.',
+    goalY: 0.5, boost: 0.85, cats: [{ type: 'kitten', x: 5.5, y: 0.2 }, { type: 'big', x: 6.5, y: 0.75, sleep: true }, { type: 'normal', x: 8.5, y: 0.45 },
+      { type: 'chonk', x: 11, y: 0.15, sleep: true }, { type: 'black', x: 11.5, y: 0.8 }, { type: 'tuxedo', x: 14, y: 0.35 }, { type: 'siamese', x: 15.5, y: 0.75 }] },
 ];
+
+// Difficulty ramp: later levels have more excitable cats.
+LEVELS.forEach((lv, i) => { if (lv.boost === undefined) lv.boost = 0.85 + 0.15 * i / (LEVELS.length - 1); });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -164,13 +214,14 @@ const game = {
 function makeCat(spec, Wc) {
   const T = CAT_TYPES[spec.type];
   return {
-    T, x: spec.x, y: clamp(spec.y * Wc, 1, Wc - 1),
+    T, x: spec.x, y: clamp(spec.y * Wc, 0.6 * T.size + 0.3, Wc - 0.6 * T.size - 0.3),
     a: Math.PI,            // body heading (facing the start)
     head: 0,               // head angle relative to body
     E: 0,                  // excitement 0..1.3
-    state: 'watch',
+    state: spec.sleep ? 'sleep' : 'watch',
     timer: 0,
-    crouch: 0, wiggle: 0, height: 0,
+    patienceT: 0,
+    crouch: spec.sleep ? 1 : 0, wiggle: 0, height: 0,
     leap: null,
     t: Math.random() * 10,
     blink: 2 + Math.random() * 3,
@@ -196,7 +247,7 @@ function clampWorld() {
   const d = game.dot;
   if (d) { d.y = clamp(d.y, 0.3, Wc - 0.3); d.ty = clamp(d.ty, 0.3, Wc - 0.3); }
   if (game.goal) game.goal.y = clamp(game.level.goalY * Wc, 1.2, Wc - 1.2);
-  for (const c of game.cats) c.y = clamp(c.y, 0.6, Wc - 0.6);
+  for (const c of game.cats) c.y = clamp(c.y, 0.55 * c.T.size, Wc - 0.55 * c.T.size);
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +342,8 @@ function showMenu() {
       <li><b>Mouse:</b> click the red dot to pick it up, then move the mouse.</li>
       <li><b>Touch:</b> swipe anywhere — the dot follows your finger's movement.</li>
       <li>Still dot → cats just stare. Slow moves → they crouch and stalk. Fast moves → <b>POUNCE</b>.</li>
-      <li>When a cat wiggles its bum, it's about to jump. Move the dot away!</li>
+      <li>When a cat wiggles its bum, it's about to jump. Move the dot away — and once it's in the air, cut sideways!</li>
+      <li>Cats predict where you're going, try to block your path, and won't wait forever if you sit still next to them.</li>
     </ul>
     <div class="levels">${btns}</div>
   `);
@@ -380,6 +432,20 @@ function updateDot(dt) {
   d.vx = lerp(d.vx, ivx, k); d.vy = lerp(d.vy, ivy, k);
   // Speed is smoothed separately so back-and-forth jiggling still counts.
   d.speed = lerp(d.speed, Math.hypot(ivx, ivy), k);
+  // Sudden start after resting: cats react to that instantly.
+  d.startle = false;
+  if (d.speed < 0.4) d.still = (d.still || 0) + dt;
+  else { if (d.still > 0.4 && d.speed > 2.5) d.startle = true; if (d.speed > 2.5) d.still = 0; }
+}
+
+// Where a cat wants to be: smart cats aim ahead of the dot, between it and the finish.
+function aimPoint(c) {
+  const d = game.dot, g = game.goal, T = c.T;
+  const gx = g.x - d.x, gy = g.y - d.y, gd = Math.hypot(gx, gy) || 1;
+  const ahead = Math.min(3, gd * 0.5);
+  const px = d.x + gx / gd * ahead * 0.7 + d.vx * 0.5 * 0.3;
+  const py = d.y + gy / gd * ahead * 0.7 + d.vy * 0.5 * 0.3;
+  return { x: lerp(d.x, px, T.iq), y: lerp(d.y, py, T.iq) };
 }
 
 function updateCat(c, dt) {
@@ -392,16 +458,20 @@ function updateCat(c, dt) {
   // --- excitement ---------------------------------------------------------
   if (c.state === 'watch' || c.state === 'stalk' || c.state === 'chase') {
     const v = Math.max(0, d.speed - 0.15);
-    const prox = 1 / (1 + (dist / T.perception) ** 2);
+    // attention falls off sharply beyond the cat's perception distance
+    const prox = 1 / (1 + (dist / T.perception) ** 4);
     // How worked-up the cat "wants" to be. Faster movement is
     // disproportionately exciting; slow movement gets it crouching (~0.35-0.9),
     // sustained fast movement pushes it past 1 = POUNCE.
-    let target = T.sens * (v + v * v / 8) * prox;
+    let target = T.sens * (v + v * v / 12) * prox;
     // A dot parked right under a cat's nose is very tempting.
     target += 0.6 * Math.max(0, 1 - dist / (1.6 * T.size));
+    target *= game.level.boost;
     if (c.state === 'chase' && v < 0.3) target *= 0.5;
+    if (d.startle && dist < T.perception) c.E = Math.min(1.5, c.E + T.reflex);
     if (game.time < GRACE_TIME) target = 0;
-    const rate = target > c.E ? T.rise : T.decay;
+    // Big stimulus = near-instant reaction, like a real cat.
+    const rate = target > c.E ? T.rise * (1 + 2 * Math.max(0, target - 1)) : T.decay;
     c.E = clamp(c.E + (target - c.E) * rate * dt, 0, 1.5);
   }
 
@@ -409,38 +479,74 @@ function updateCat(c, dt) {
   const wantHead = clamp(angDiff(c.a, toDot), -1.2, 1.2);
   c.head = lerp(c.head, wantHead, 1 - Math.exp(-dt * 10));
 
-  const targetCrouch = { watch: 0, stalk: 0.7, chase: 0.3, windup: 1, leap: 0, recover: 0, caught: 0.4 }[c.state];
+  const targetCrouch = { sleep: 1, watch: 0, stalk: 0.7, chase: 0.3, windup: 1, leap: 0, recover: 0, caught: 0.4 }[c.state];
   c.crouch = lerp(c.crouch, targetCrouch, 1 - Math.exp(-dt * 6));
   c.wiggle = lerp(c.wiggle, c.state === 'windup' ? 1 : 0, 1 - Math.exp(-dt * 10));
 
   const move = (speed, ang) => { c.x += Math.cos(ang) * speed * dt; c.y += Math.sin(ang) * speed * dt; };
 
+  const moveTo = (p, speed, turnMul) => {
+    const ang = Math.atan2(p.y - c.y, p.x - c.x), pd = Math.hypot(p.x - c.x, p.y - c.y);
+    c.a = turnTo(c.a, ang, T.turn * turnMul * dt);
+    if (pd > 0.15 && Math.abs(angDiff(c.a, ang)) < 0.8) move(Math.min(speed, pd / dt), c.a);
+  };
+
+  // Paw swipe: a dot zipping right under an alert cat's nose gets swatted.
+  if ((c.state === 'stalk' || c.state === 'chase' || c.state === 'windup' || (c.state === 'watch' && c.E > 0.15))
+      && game.time > GRACE_TIME && dist < 0.55 * T.size + DOT_R) {
+    c.a = toDot; catchDot(c); return;
+  }
+
   switch (c.state) {
+    case 'sleep': {
+      c.head = 0; c.E = 0;
+      // Wakes up if the dot moves close by.
+      // (fast movement wakes it from further away)
+      if (game.time > GRACE_TIME && d.speed > 2 && dist < 1.5 * T.size + 1.5 + d.speed * 0.35) wakeUp(c);
+      break;
+    }
+
     case 'watch':
-      c.a = turnTo(c.a, toDot, T.turn * 0.4 * dt);
-      if (c.E >= 0.35) c.state = 'stalk';
+      c.a = turnTo(c.a, toDot, T.turn * 0.5 * dt);
+      // Clever cats quietly reposition to guard the path to the finish.
+      if (T.iq >= 0.5 && dist > T.leapRange * 1.2) {
+        const p = aimPoint(c);
+        if (Math.hypot(p.x - c.x, p.y - c.y) > 1.5) moveTo(p, T.stalkSpeed * 0.4 * T.iq, 0.6);
+      }
+      if (c.E >= 0.3) c.state = 'stalk';
       break;
 
-    case 'stalk':
-      c.a = turnTo(c.a, toDot, T.turn * 0.8 * dt);
-      if (dist > T.leapRange * 0.7 && Math.abs(angDiff(c.a, toDot)) < 0.6) move(T.stalkSpeed * (0.4 + c.E), c.a);
-      if (c.E < 0.25) c.state = 'watch';
-      else if (c.E >= 1) {
-        if (dist <= T.leapRange) startWindup(c, T.windup);
-        else c.state = 'chase';
+    case 'stalk': {
+      const p = aimPoint(c);
+      // creep into striking distance, faster when more worked up
+      if (dist > T.leapRange * 0.55) moveTo(p, T.stalkSpeed * (0.3 + 0.6 * c.E), 1);
+      else c.a = turnTo(c.a, toDot, T.turn * dt);
+      // A cat in range won't wait forever, even for a still dot.
+      if (dist <= T.leapRange * 0.85 && c.E > 0.5) c.patienceT += dt; else c.patienceT = Math.max(0, c.patienceT - dt);
+      if (c.E < 0.2) c.state = 'watch';
+      else if (c.E >= 1 || c.patienceT > T.patience) {
+        c.patienceT = 0;
+        // A very worked-up cat strikes on instinct with less warning.
+        if (dist <= T.leapRange) startWindup(c, T.windup * (c.E >= 1.4 ? 0.6 : 1));
+        else { c.state = 'chase'; c.timer = 2.5; }
       }
       break;
+    }
 
-    case 'chase':
-      c.a = turnTo(c.a, toDot, T.turn * 2 * dt);
-      move(T.runSpeed, c.a);
-      if (dist <= T.leapRange * 0.75) startWindup(c, T.windup * 0.5);
-      else if (c.E < 0.6) c.state = 'stalk';
+    case 'chase': {
+      const p = aimPoint(c);
+      moveTo(p, T.runSpeed, 2.5);
+      c.timer -= dt; // chases are short bursts
+      if (dist <= T.leapRange * 0.8) startWindup(c, T.windup * 0.5);
+      else if (c.E < 0.5 || c.timer <= 0) { c.state = 'stalk'; c.E = Math.min(c.E, 0.6); }
       break;
+    }
 
     case 'windup':
       c.a = turnTo(c.a, toDot, T.turn * 1.5 * dt);
       c.timer -= dt;
+      // Smart cats don't waste a jump on a dot that's already out of reach.
+      if (T.iq >= 0.7 && dist > T.leapRange * 1.25) { c.state = 'chase'; c.timer = 2; break; }
       if (c.timer <= 0) startLeap(c);
       break;
 
@@ -461,12 +567,14 @@ function updateCat(c, dt) {
       c.height = Math.sin(Math.PI * p);
       c.a = Math.atan2(lp.ty - lp.y0, lp.tx - lp.x0);
       const catchR = 0.3 * T.size + DOT_R;
-      if (p > 0.82 && Math.hypot(d.x - c.x, d.y - c.y) < catchR) { catchDot(c); break; }
+      if (p > 0.5 && Math.hypot(d.x - c.x, d.y - c.y) < catchR) { catchDot(c); break; }
       if (p >= 1) {
         c.height = 0;
         Sound.thud();
-        c.state = 'recover'; c.timer = T.recover; c.E = 0.15;
+        const near = Math.hypot(d.x - c.x, d.y - c.y) < T.leapRange;
+        c.state = 'recover'; c.timer = T.recover * (near ? 0.75 : 1); c.E = near ? 0.45 : 0.25;
         game.fx.push({ kind: 'puff', x: c.x, y: c.y, t: 0 });
+        for (const o of game.cats) if (o.state === 'sleep' && Math.hypot(o.x - c.x, o.y - c.y) < 6) wakeUp(o);
       }
       break;
     }
@@ -475,7 +583,7 @@ function updateCat(c, dt) {
       c.timer -= dt;
       // look around confused
       c.head = Math.sin(c.t * 3) * 0.9;
-      if (c.timer <= 0) { c.state = 'watch'; c.E = 0.2; }
+      if (c.timer <= 0) c.state = c.E >= 0.3 ? 'stalk' : 'watch';
       break;
 
     case 'caught':
@@ -484,12 +592,22 @@ function updateCat(c, dt) {
 
   // keep on the board
   if (c.state !== 'leap') {
-    c.x = clamp(c.x, 0.6, L - 0.6);
-    c.y = clamp(c.y, 0.6, view.Wc - 0.6);
+    const m = 0.55 * T.size;
+    c.x = clamp(c.x, m, L - m);
+    c.y = clamp(c.y, m, view.Wc - m);
   }
 }
 
+function wakeUp(c) {
+  // groggy for a moment ("?"), then very interested
+  c.state = 'recover'; c.timer = 0.4; c.E = 0.6; c.patienceT = 0;
+  game.fx.push({ kind: 'wake', x: c.x, y: c.y, t: 0 });
+  Sound.mrrp();
+}
+
 function startWindup(c, time) {
+  // Fast-moving prey gets a snap-pounce with hardly any warning.
+  if (game.dot.speed > 6) time *= 0.6;
   c.state = 'windup'; c.timer = time;
   Sound.mrrp();
 }
@@ -504,7 +622,7 @@ function startLeap(c) {
   c.state = 'leap';
   Sound.pounce();
   // A pounce startles the other cats a little.
-  for (const o of game.cats) if (o !== c && (o.state === 'watch' || o.state === 'stalk')) o.E = Math.min(1.5, o.E + 0.15);
+  for (const o of game.cats) if (o !== c && (o.state === 'watch' || o.state === 'stalk') && Math.hypot(o.x - c.x, o.y - c.y) < 6) o.E = Math.min(1.5, o.E + 0.15);
 }
 
 function catchDot(c) {
@@ -629,7 +747,7 @@ function drawCatShadowAndHint(c) {
   ctx.fill();
   ctx.restore();
 
-  if (game.level.hints && (game.state === 'play' || game.state === 'ready') && c.state !== 'caught') {
+  if (game.level.hints && (game.state === 'play' || game.state === 'ready') && c.state !== 'caught' && c.state !== 'sleep') {
     // excitement ring
     const e = clamp(c.E, 0, 1);
     const col = e < 0.35 ? '#7ad36b' : e < 0.75 ? '#ffcc33' : '#ff4b3a';
@@ -667,8 +785,8 @@ function drawCat(c) {
   const outline = 'rgba(0,0,0,0.35)';
 
   // tail
-  const tailSpeed = { watch: 1.5, stalk: 4, chase: 3, windup: 9, leap: 0, recover: 2, caught: 6 }[c.state];
-  const tailAmp = { watch: 0.25, stalk: 0.35, chase: 0.15, windup: 0.5, leap: 0, recover: 0.3, caught: 0.6 }[c.state];
+  const tailSpeed = { sleep: 0.5, watch: 1.5, stalk: 4, chase: 3, windup: 9, leap: 0, recover: 2, caught: 6 }[c.state];
+  const tailAmp = { sleep: 0.08, watch: 0.25, stalk: 0.35, chase: 0.15, windup: 0.5, leap: 0, recover: 0.3, caught: 0.6 }[c.state];
   const sw = Math.sin(c.t * tailSpeed) * tailAmp;
   const tailBase = { x: -0.5 - cr * 0.06, y: w / s };
   const tailLen = flying ? 0.85 : 0.75;
@@ -680,7 +798,7 @@ function drawCat(c) {
       tailBase.x - tailLen * 0.9, tailBase.y + sw * 1.4 + (flying ? 0 : 0.15));
   };
   tail(); ctx.stroke();
-  ctx.strokeStyle = T.fur; ctx.lineWidth = 0.11; tail(); ctx.stroke();
+  ctx.strokeStyle = T.points ? T.stripe : T.fur; ctx.lineWidth = 0.11; tail(); ctx.stroke();
   if (T.tabby) {
     ctx.strokeStyle = T.stripe; ctx.lineWidth = 0.11; ctx.setLineDash([0.06, 0.08]);
     tail(); ctx.stroke(); ctx.setLineDash([]);
@@ -710,6 +828,14 @@ function drawCat(c) {
   ellipse(-0.25, w / s, 0.3, bodyW * 1.04); ctx.fill(); ctx.stroke();
   ellipse(0.05, 0, bodyLen * 0.85, bodyW); ctx.fill(); ctx.stroke();
   ellipse(-0.25, w / s, 0.28, bodyW * 1.0); ctx.fill();
+  if (T.calico) {
+    ctx.fillStyle = T.stripe; ellipse(-0.3, -0.1, 0.16, 0.11, 0.4); ctx.fill();
+    ctx.fillStyle = '#3a3036'; ellipse(0.12, 0.1, 0.13, 0.09, -0.3); ctx.fill();
+    ctx.fillStyle = T.stripe; ellipse(0.25, -0.12, 0.08, 0.06); ctx.fill();
+  }
+  if (T.light === '#ffffff' && T.fur === '#1f1f22') { // tuxedo bib
+    ctx.fillStyle = T.light; ellipse(0.32, 0, 0.1, 0.12); ctx.fill();
+  }
   if (T.tabby) {
     ctx.strokeStyle = T.stripe; ctx.lineWidth = 0.05;
     for (const sx of [-0.38, -0.2, -0.02, 0.16]) {
@@ -728,7 +854,7 @@ function drawCat(c) {
   ctx.rotate(c.head);
   // ears (flatten during windup / leap)
   const earBack = clamp(c.wiggle + (flying ? 1 : 0), 0, 1);
-  ctx.fillStyle = T.fur; ctx.strokeStyle = outline; ctx.lineWidth = 0.025;
+  ctx.fillStyle = T.points ? T.stripe : T.fur; ctx.strokeStyle = outline; ctx.lineWidth = 0.025;
   for (const side of [-1, 1]) {
     const bx = 0.02, by = side * 0.17;
     const tipX = lerp(0.1, -0.12, earBack), tipY = side * lerp(0.3, 0.33, earBack);
@@ -739,9 +865,11 @@ function drawCat(c) {
     ctx.beginPath();
     ctx.moveTo(bx + 0.06, by * 0.75); ctx.lineTo(lerp(tipX, bx, 0.25), lerp(tipY, by, 0.25)); ctx.lineTo(bx - 0.06, by * 0.9);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle = T.fur;
+    ctx.fillStyle = T.points ? T.stripe : T.fur;
   }
+  ctx.fillStyle = T.fur;
   ellipse(0, 0, 0.21, 0.23); ctx.fill(); ctx.stroke();
+  if (T.points) { ctx.fillStyle = T.stripe; ellipse(0.09, 0, 0.13, 0.15); ctx.fill(); }
   if (T.tabby) {
     ctx.strokeStyle = T.stripe; ctx.lineWidth = 0.035;
     for (const k of [-0.06, 0, 0.06]) { ctx.beginPath(); ctx.moveTo(-0.12, k); ctx.lineTo(0.0, k * 0.6); ctx.stroke(); }
@@ -758,7 +886,7 @@ function drawCat(c) {
     ctx.beginPath(); ctx.moveTo(0.15, side * 0.06); ctx.lineTo(0.22 + k * 0.02, side * (0.24 + k * 0.05)); ctx.stroke();
   }
   // eyes
-  const blinking = c.blink < 0 && c.state !== 'leap' && c.state !== 'windup';
+  const blinking = c.state === 'sleep' || (c.blink < 0 && c.state !== 'leap' && c.state !== 'windup');
   const dot = game.dot;
   for (const side of [-1, 1]) {
     const ex = 0.06, ey = side * 0.095;
@@ -794,12 +922,14 @@ function drawLabels() {
     let txt = null, col = '#fff';
     if (c.state === 'windup' || c.state === 'chase') { txt = '!'; col = '#ff3b2f'; }
     else if (c.state === 'recover') { txt = '?'; col = '#fff'; }
+    else if (c.state === 'sleep') { txt = 'z'; col = '#cfe3ff'; }
     else if (c.state === 'caught') { txt = '♥'; col = '#ff6b8a'; }
     if (!txt) continue;
     const p = toScreen(c.x, c.y);
     const fs = Math.max(18, view.U * 0.7);
     const bob = Math.sin(c.t * 8) * 3;
-    const yOff = c.T.size * view.U * 0.85;
+    let yOff = c.T.size * view.U * 0.85;
+    if (p.y - yOff < 56) yOff = -yOff; // near the top edge: show it below the cat
     ctx.font = `900 ${fs}px system-ui, sans-serif`;
     ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
     ctx.strokeText(txt, p.x, p.y - yOff + bob);
@@ -813,6 +943,10 @@ function drawFx() {
       const k = f.t / 0.6;
       ctx.strokeStyle = `rgba(255,255,255,${0.5 * (1 - k)})`; ctx.lineWidth = 0.05;
       ctx.beginPath(); ctx.arc(f.x, f.y, 0.4 + k * 0.9, 0, Math.PI * 2); ctx.stroke();
+    } else if (f.kind === 'wake') {
+      const k = f.t / 0.6;
+      ctx.strokeStyle = `rgba(255,220,80,${0.8 * (1 - k)})`; ctx.lineWidth = 0.08;
+      ctx.beginPath(); ctx.arc(f.x, f.y, 0.8 + k * 1.5, 0, Math.PI * 2); ctx.stroke();
     }
   }
 }
@@ -896,5 +1030,5 @@ showMenu();
 requestAnimationFrame(frame);
 
 // Expose for debugging in the console.
-window.lazerCat = { game, LEVELS, CAT_TYPES };
+window.lazerCat = { game, LEVELS, CAT_TYPES, update, loadLevel, startPlay };
 })();

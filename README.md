@@ -7,14 +7,19 @@ The cats behave a bit like real cats:
 
 | What the dot does | What the cat does |
 |---|---|
-| Sits still | Watches it intently (pupils dilate as it gets interested) |
+| Sits still far away | Watches it intently (pupils dilate as it gets interested) |
 | Moves slowly / small moves | Crouches, tail twitches, stalks closer |
 | Moves fast / jiggles | Excitement builds → butt-wiggle (**warning!**) → **POUNCE** |
-| Far away and exciting | Runs after it, then pounces |
-| Cat misses | It's confused for a moment (`?`) — your chance to move on |
+| Races past | Snap-pounce with hardly any warning, or a quick chase |
+| Zips right under its nose | Paw swipe — caught! |
+| Sits still *next to* a stalking cat | It loses patience and pounces anyway |
+| Starts moving suddenly after resting | Instant spike of excitement |
+| Cat misses | It's confused for a moment (`?`) — your chance to move on (but it may strike again quickly) |
 
-A cat aims its pounce at where the dot is going, and can steer a little in mid-air.
-Get out of the way while it's wiggling!
+Cats aim where the dot is *going*, steer in mid-air, and the clever ones cut you off on the
+way to the finish and won't waste a jump that can't reach. Sleeping cats (`z`) wake up if you
+come too close or move too fast near them. The way through: move slowly, keep your distance,
+dodge when a cat wiggles — and once it's airborne, cut sideways.
 
 ## Controls
 
@@ -27,16 +32,16 @@ In portrait mode the board turns vertical (start at the bottom, finish at the to
 
 ## Levels
 
-1. Big Lazy Tom — one big, slow cat
-2. Mittens — a normal house cat
-3. Two's Company — two cats
-4. The Kitten — tiny, fast, twitchy
-5. Shadow — black cat with a long jump
-6. The Family — three cats
-7. Cat Café — four cats
+1. Big Lazy Tom · 2. Mittens · 3. Two's Company · 4. The Kitten · 5. Shadow ·
+6. Sleepy Head · 7. The Professor · 8. The Family · 9. Ninja · 10. Nap Time ·
+11. Guard Duty · 12. The Wall · 13. Cat Café · 14. Night Shift · 15. Double Trouble ·
+16. Crazy Cat House
+
+Cats: Big Tom (big, slow), Mittens (house cat), Pip (twitchy kitten), Shadow (long jumper),
+Biscuit (huge calico), Professor Miso (clever Siamese), Ninja (tuxedo ambusher).
 
 Levels 1–3 show an excitement ring around each cat (green → yellow → red) plus
-its pounce range, to help you learn how the cats think. Progress is saved in the browser.
+its pounce range. Progress is saved in the browser.
 
 ## Running it
 
@@ -54,4 +59,7 @@ All tuning is at the top of `game.js`:
 
 - `CAT_TYPES` — each cat's personality: excitability, jump range, warning
   (windup) time, mid-air steering, recovery time, and so on.
-- `LEVELS` — which cats appear where, the finish position, and whether hints are shown.
+- `LEVELS` — which cats appear where (and whether asleep), the finish position,
+  hints, and `boost` (how excitable the cats are on that level).
+- `tools/balance.js` — plays every level with bots and prints win rates, to check
+  difficulty after tuning (needs Playwright).
