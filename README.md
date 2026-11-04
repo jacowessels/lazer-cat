@@ -1,8 +1,9 @@
 # Lazer Cat 🔴🐈
 
 A browser game: you control a laser pointer dot and must guide it from the start
-circle to the checkered finish — and hold it there for a moment — without a cat pouncing on it.
-The hold ring (green) only fills while no cat nearby is chasing or about to pounce (orange).
+circle to the checkered finish without a cat pouncing on it. Resting the dot on the flag for a
+split second finishes the level; if you fling it there at top speed, the flag turns orange and
+you have to wait a moment (so whipping it straight from the start doesn't work).
 
 The cats behave a bit like real cats:
 
@@ -58,7 +59,8 @@ There is no build step and there are no dependencies. Any of these works:
 
 All tuning is at the top of `game.js`:
 
-- `FINISH_HOLD` — how long the dot must rest on the flag to finish.
+- `FINISH_HOLD`, `FLING_SPEED`, `FLING_COOLDOWN` — how long to rest on the flag, and the wait
+  after a fling.
 - `CAT_TYPES` — each cat's personality: excitability, jump range, warning
   (windup) time, mid-air steering, recovery time, and so on.
 - `LEVELS` — which cats appear where (and whether asleep), the finish position,

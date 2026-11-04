@@ -10,10 +10,13 @@
 // screen allows. 1 unit ~ a laser-dot's "step".
 const L = 18;
 // The dot sits exactly under the mouse cursor / your finger (no lag, no speed limit).
-// To finish, the dot must rest calmly on the flag for a moment.
-const FINISH_HOLD = 0.8;       // seconds
+// To finish, the dot must rest on the flag for a split second.
+const FINISH_HOLD = 0.2;       // seconds
 const FINISH_CALM = 4;         // max dot speed that counts as resting
-// (and it only counts while no cat is chasing / about to pounce / mid-air)
+// Right after a very fast fling, the flag doesn't count for a moment
+// (so you can't just whip the dot from the start straight onto the flag).
+const FLING_SPEED = 15;        // units / second
+const FLING_COOLDOWN = 2;      // seconds
 const DOT_R = 0.17;
 const START_X = 1.6;
 const FINISH_X = L - 1.6;
@@ -244,7 +247,7 @@ function loadLevel(i) {
   const Wc = view.Wc;
   game.cats = game.level.cats.map(c => makeCat(c, Wc));
   game.dot = { x: START_X, y: Wc / 2, tx: START_X, ty: Wc / 2, px: START_X, py: Wc / 2, vx: 0, vy: 0, speed: 0 };
-  game.hold = 0;
+  game.hold = 0; game.flingT = 0; game.holdPaused = false;
   game.goal = { x: FINISH_X, y: clamp(game.level.goalY * Wc, 1.2, Wc - 1.2) };
   game.time = 0; game.playTime = 0; game.fx = [];
   game.state = 'ready';
@@ -343,7 +346,7 @@ function showMenu() {
     <ul>
       <li><b>Mouse:</b> click the red dot to pick it up, then move the mouse.</li>
       <li><b>Touch:</b> put your finger on the red dot and slide it — the dot stays right under your finger.</li>
-      <li>Reach the flag and <b>hold the dot there</b> until the green ring fills. It pauses (orange) while a cat is hunting you.</li>
+      <li>Rest the dot on the flag for a split second to finish. If you fling it there, the flag turns orange — wait a moment.</li>
       <li>Still dot → cats just stare. Slow moves → they crouch and stalk. Fast moves → <b>POUNCE</b>.</li>
       <li>When a cat wiggles its bum, it's about to jump. Move the dot away — and once it's in the air, cut sideways!</li>
       <li>Cats predict where you're going, try to block your path, and won't wait forever if you sit still next to them.</li>
@@ -664,11 +667,11 @@ function update(dt) {
     separateCats();
     if (game.state === 'play') {
       const inside = Math.hypot(game.dot.x - game.goal.x, game.dot.y - game.goal.y) < FINISH_R;
-      // The hold only counts while the dot rests and no cat is actively hunting it.
-      const hunting = game.cats.some(c => (c.state === 'chase' || c.state === 'windup' || c.state === 'leap')
-        && Math.hypot(c.x - game.dot.x, c.y - game.dot.y) < 8);
-      game.holdPaused = inside && hunting;
-      if (inside && game.dot.speed < FINISH_CALM && !hunting) game.hold += dt;
+      // After a fling the flag is "cooling down" for a moment.
+      if (game.dot.speed > FLING_SPEED) game.flingT = FLING_COOLDOWN;
+      else game.flingT = Math.max(0, (game.flingT || 0) - dt);
+      game.holdPaused = inside && game.flingT > 0;
+      if (inside && game.dot.speed < FINISH_CALM && game.flingT <= 0) game.hold += dt;
       else game.hold = inside ? Math.max(0, game.hold - dt) : 0;
       if (game.hold >= FINISH_HOLD) winLevel();
     }
@@ -751,7 +754,11 @@ function drawStartAndGoal() {
   ctx.translate(g.x, g.y);
   ctx.lineWidth = 0.08; ctx.strokeStyle = '#ffd34d';
   ctx.beginPath(); ctx.arc(0, 0, r + 0.04 + Math.sin(t * 4) * 0.04, 0, Math.PI * 2); ctx.stroke();
-  if (game.hold > 0) {
+  if (game.holdPaused) {
+    // orange ring: you flung it here, wait a moment
+    ctx.lineWidth = 0.16; ctx.strokeStyle = '#ff9f43';
+    ctx.beginPath(); ctx.arc(0, 0, r + 0.22, 0, Math.PI * 2); ctx.stroke();
+  } else if (game.hold > 0) {
     // "hold it here" progress ring
     ctx.lineWidth = 0.16; ctx.strokeStyle = game.holdPaused ? '#ff9f43' : '#4cd964'; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(0, 0, r + 0.22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, game.hold / FINISH_HOLD)); ctx.stroke();
