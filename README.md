@@ -25,8 +25,8 @@ dodge when a cat wiggles — and once it's airborne, cut sideways.
 ## Controls
 
 - **Mouse (PC):** click the red dot to pick it up, then move the mouse — the dot sits exactly under it.
-- **Touch (tablet/phone):** touch anywhere and swipe. The dot moves *with* your
-  finger, so your finger never covers it. Fast swipes throw it further, like mouse acceleration.
+- **Touch (tablet/phone):** put your finger on the red dot and slide it. The dot stays
+  exactly under your finger, with a red target ring around it so you can still see it.
 - `Esc` / `P` pauses, `R` restarts the level.
 
 In portrait mode the board turns vertical (start at the bottom, finish at the top).
@@ -58,8 +58,6 @@ There is no build step and there are no dependencies. Any of these works:
 
 All tuning is at the top of `game.js`:
 
-- `TOUCH_ACCEL`, `TOUCH_GAIN_MAX` — touch "sensitivity": the dot follows your mouse exactly,
-  and on touch screens fast swipes throw it further (pointer acceleration), slow ones stay precise.
 - `FINISH_HOLD` — how long the dot must rest on the flag to finish.
 - `CAT_TYPES` — each cat's personality: excitability, jump range, warning
   (windup) time, mid-air steering, recovery time, and so on.
