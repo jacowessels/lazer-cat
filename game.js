@@ -9,15 +9,14 @@
 // World units: the board is L units long (start -> finish) and as wide as the
 // screen allows. 1 unit ~ a laser-dot's "step".
 const L = 18;
-// The dot follows the pointer exactly (no speed limit). On touch screens, swipes get
-// pointer acceleration like a mouse: slow = precise, fast = the dot travels further.
-const TOUCH_ACCEL = 1.6;       // extra gain per (px/ms) of finger speed above TOUCH_ACCEL_FROM
-const TOUCH_ACCEL_FROM = 0.25; // px/ms
-const TOUCH_GAIN_MAX = 3;
-// To finish, the dot must rest calmly on the flag for a moment.
-const FINISH_HOLD = 0.8;       // seconds
+// The dot sits exactly under the mouse cursor / your finger (no lag, no speed limit).
+// To finish, the dot must rest on the flag for a split second.
+const FINISH_HOLD = 0.2;       // seconds
 const FINISH_CALM = 4;         // max dot speed that counts as resting
-// (and it only counts while no cat is chasing / about to pounce / mid-air)
+// Right after a very fast fling, the flag doesn't count for a moment
+// (so you can't just whip the dot from the start straight onto the flag).
+const FLING_SPEED = 15;        // units / second
+const FLING_COOLDOWN = 2;      // seconds
 const DOT_R = 0.17;
 const START_X = 1.6;
 const FINISH_X = L - 1.6;
@@ -248,7 +247,7 @@ function loadLevel(i) {
   const Wc = view.Wc;
   game.cats = game.level.cats.map(c => makeCat(c, Wc));
   game.dot = { x: START_X, y: Wc / 2, tx: START_X, ty: Wc / 2, px: START_X, py: Wc / 2, vx: 0, vy: 0, speed: 0 };
-  game.hold = 0;
+  game.hold = 0; game.flingT = 0; game.holdPaused = false;
   game.goal = { x: FINISH_X, y: clamp(game.level.goalY * Wc, 1.2, Wc - 1.2) };
   game.time = 0; game.playTime = 0; game.fx = [];
   game.state = 'ready';
@@ -275,18 +274,18 @@ canvas.addEventListener('pointerdown', e => {
   if (Sound.ctx && Sound.ctx.state === 'suspended') Sound.ctx.resume();
   pointer.type = e.pointerType;
   document.body.classList.toggle('mouse', e.pointerType === 'mouse');
+  const w = toWorld(e.clientX, e.clientY);
   if (game.state === 'ready') {
-    if (e.pointerType === 'mouse') {
-      // Mouse: you have to pick up the dot, so it never teleports.
-      const w = toWorld(e.clientX, e.clientY);
-      if (Math.hypot(w.x - game.dot.x, w.y - game.dot.y) > 1.4) return;
-      game.dot.tx = w.x; game.dot.ty = w.y;
-    }
+    // You have to pick up the dot first (fingers get a bigger grab area),
+    // so it doesn't teleport at the start.
+    const grab = e.pointerType === 'mouse' ? 1.4 : Math.max(1.6, 40 / view.U);
+    if (Math.hypot(w.x - game.dot.x, w.y - game.dot.y) > grab) return;
     startPlay();
   }
   if (game.state === 'play') {
     pointer.active = e.pointerId;
-    pointer.lastX = e.clientX; pointer.lastY = e.clientY; pointer.lastT = e.timeStamp;
+    // The dot goes exactly where the finger / cursor is.
+    game.dot.tx = clamp(w.x, 0.3, L - 0.3); game.dot.ty = clamp(w.y, 0.3, view.Wc - 0.3);
     try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
   }
   e.preventDefault();
@@ -295,21 +294,10 @@ canvas.addEventListener('pointerdown', e => {
 canvas.addEventListener('pointermove', e => {
   if (game.state !== 'play') return;
   const d = game.dot;
-  if (e.pointerType === 'mouse') {
-    // Mouse: the dot is exactly where the cursor is.
+  // Mouse: follows the cursor. Touch / pen: follows the finger while it's down.
+  if (e.pointerType === 'mouse' || pointer.active === e.pointerId) {
     const w = toWorld(e.clientX, e.clientY);
     d.tx = w.x; d.ty = w.y;
-  } else if (pointer.active === e.pointerId) {
-    // Touch / pen: swipe anywhere, the dot moves with your finger (relative),
-    // so your finger never hides the dot.
-    const mx = e.clientX - pointer.lastX, my = e.clientY - pointer.lastY;
-    const ms = Math.max(1, e.timeStamp - (pointer.lastT || e.timeStamp - 16));
-    pointer.lastX = e.clientX; pointer.lastY = e.clientY; pointer.lastT = e.timeStamp;
-    // pointer acceleration: fast swipes throw the dot further
-    const fingerSpeed = Math.hypot(mx, my) / ms;
-    const gain = Math.min(TOUCH_GAIN_MAX, 1 + Math.max(0, fingerSpeed - TOUCH_ACCEL_FROM) * TOUCH_ACCEL);
-    const dw = deltaToWorld(mx * gain, my * gain);
-    d.tx += dw.x; d.ty += dw.y;
   }
   d.tx = clamp(d.tx, 0.3, L - 0.3);
   d.ty = clamp(d.ty, 0.3, view.Wc - 0.3);
@@ -357,8 +345,8 @@ function showMenu() {
     <p class="sub">Get the laser dot to the finish flag and hold it there a moment, without a cat catching it.</p>
     <ul>
       <li><b>Mouse:</b> click the red dot to pick it up, then move the mouse.</li>
-      <li><b>Touch:</b> swipe anywhere — the dot follows your finger's movement. Fast swipes throw it further.</li>
-      <li>Reach the flag and <b>hold the dot there</b> until the green ring fills. It pauses (orange) while a cat is hunting you.</li>
+      <li><b>Touch:</b> put your finger on the red dot and slide it — the dot stays right under your finger.</li>
+      <li>Rest the dot on the flag for a split second to finish. If you fling it there, the flag turns orange — wait a moment.</li>
       <li>Still dot → cats just stare. Slow moves → they crouch and stalk. Fast moves → <b>POUNCE</b>.</li>
       <li>When a cat wiggles its bum, it's about to jump. Move the dot away — and once it's in the air, cut sideways!</li>
       <li>Cats predict where you're going, try to block your path, and won't wait forever if you sit still next to them.</li>
@@ -373,7 +361,7 @@ function showIntro() {
   showPanel(`
     <h2>Level ${game.levelIndex + 1}: ${game.level.name}</h2>
     <p>${game.level.intro}</p>
-    <p class="sub">${touch ? 'Tap Go, then touch the screen and swipe to move the laser.' : 'Click Go, then click the red dot to pick up the laser.'}</p>
+    <p class="sub">${touch ? 'Tap Go, then put your finger on the red dot and slide it.' : 'Click Go, then click the red dot to pick up the laser.'}</p>
     <button class="btn" id="go">Go!</button>
     <button class="btn secondary" id="menu">Levels</button>
   `, { go: () => { hidePanel(); document.body.classList.add('playing'); }, menu: showMenu });
@@ -679,11 +667,11 @@ function update(dt) {
     separateCats();
     if (game.state === 'play') {
       const inside = Math.hypot(game.dot.x - game.goal.x, game.dot.y - game.goal.y) < FINISH_R;
-      // The hold only counts while the dot rests and no cat is actively hunting it.
-      const hunting = game.cats.some(c => (c.state === 'chase' || c.state === 'windup' || c.state === 'leap')
-        && Math.hypot(c.x - game.dot.x, c.y - game.dot.y) < 8);
-      game.holdPaused = inside && hunting;
-      if (inside && game.dot.speed < FINISH_CALM && !hunting) game.hold += dt;
+      // After a fling the flag is "cooling down" for a moment.
+      if (game.dot.speed > FLING_SPEED) game.flingT = FLING_COOLDOWN;
+      else game.flingT = Math.max(0, (game.flingT || 0) - dt);
+      game.holdPaused = inside && game.flingT > 0;
+      if (inside && game.dot.speed < FINISH_CALM && game.flingT <= 0) game.hold += dt;
       else game.hold = inside ? Math.max(0, game.hold - dt) : 0;
       if (game.hold >= FINISH_HOLD) winLevel();
     }
@@ -766,7 +754,11 @@ function drawStartAndGoal() {
   ctx.translate(g.x, g.y);
   ctx.lineWidth = 0.08; ctx.strokeStyle = '#ffd34d';
   ctx.beginPath(); ctx.arc(0, 0, r + 0.04 + Math.sin(t * 4) * 0.04, 0, Math.PI * 2); ctx.stroke();
-  if (game.hold > 0) {
+  if (game.holdPaused) {
+    // orange ring: you flung it here, wait a moment
+    ctx.lineWidth = 0.16; ctx.strokeStyle = '#ff9f43';
+    ctx.beginPath(); ctx.arc(0, 0, r + 0.22, 0, Math.PI * 2); ctx.stroke();
+  } else if (game.hold > 0) {
     // "hold it here" progress ring
     ctx.lineWidth = 0.16; ctx.strokeStyle = game.holdPaused ? '#ff9f43' : '#4cd964'; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.arc(0, 0, r + 0.22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, game.hold / FINISH_HOLD)); ctx.stroke();
@@ -1007,6 +999,21 @@ function drawLaser() {
   ctx.fillStyle = '#ffd9d9';
   ctx.beginPath(); ctx.arc(d.x, d.y, DOT_R * 0.45, 0, Math.PI * 2); ctx.fill();
 
+  if (game.state === 'play' && pointer.active !== null && pointer.type !== 'mouse') {
+    // Your finger covers the dot, so show a ring around it that peeks out past the fingertip.
+    const r = Math.max(0.9, 46 / view.U);
+    ctx.strokeStyle = 'rgba(255,60,60,0.85)'; ctx.lineWidth = Math.max(0.05, 3 / view.U);
+    ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 4; k++) {
+      const a = k * Math.PI / 2 + Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(d.x + Math.cos(a) * r, d.y + Math.sin(a) * r);
+      ctx.lineTo(d.x + Math.cos(a) * (r + 0.3), d.y + Math.sin(a) * (r + 0.3));
+      ctx.stroke();
+    }
+  }
+
   if (game.state === 'ready') {
     // "pick me up" pulse
     ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.4 * Math.sin(t * 5)})`; ctx.lineWidth = 0.05;
@@ -1018,7 +1025,7 @@ function drawReadyHint() {
   if (game.state !== 'ready' || overlay.classList.contains('show')) return;
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   const coarse = matchMedia('(pointer: coarse)').matches;
-  const txt = coarse ? 'Touch anywhere and swipe to move the laser' : 'Click the red dot to pick up the laser';
+  const txt = coarse ? 'Put your finger on the red dot to pick it up' : 'Click the red dot to pick up the laser';
   ctx.font = `700 ${Math.max(15, Math.min(22, view.W / 30))}px system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const y = 72;
